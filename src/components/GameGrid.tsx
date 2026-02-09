@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState, type RefObject } from 'react';
-import { GRID_SIZE } from '../types';
 import type { Pattern, SelectionRect } from '../types';
 
 interface GameGridProps {
   grid: boolean[][];
   setGrid: React.Dispatch<React.SetStateAction<boolean[][]>>;
+  gridSize: number;
   cellSize: number;
   viewOffset: { x: number; y: number };
   setViewOffset: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
@@ -36,6 +36,7 @@ interface GameGridProps {
 export function GameGrid({
   grid,
   setGrid,
+  gridSize,
   cellSize,
   viewOffset,
   setViewOffset,
@@ -91,7 +92,7 @@ export function GameGrid({
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
 
-    const gridPx = GRID_SIZE * cellSize;
+    const gridPx = gridSize * cellSize;
     const minX = -gridPx;
     const maxX = canvas.width;
     const minY = -gridPx;
@@ -128,8 +129,8 @@ export function GameGrid({
 
     const startX = Math.floor(-viewOffset.x / cellSize);
     const startY = Math.floor(-viewOffset.y / cellSize);
-    const endX = Math.min(GRID_SIZE, startX + Math.ceil(canvas.width / cellSize) + 1);
-    const endY = Math.min(GRID_SIZE, startY + Math.ceil(canvas.height / cellSize) + 1);
+    const endX = Math.min(gridSize, startX + Math.ceil(canvas.width / cellSize) + 1);
+    const endY = Math.min(gridSize, startY + Math.ceil(canvas.height / cellSize) + 1);
 
     if (cellSize >= 6) {
       for (let i = Math.max(0, startX); i <= endX; i++) {
@@ -202,9 +203,9 @@ export function GameGrid({
       ctx.lineWidth = 1;
       patternToPlace.cells.forEach(([dx, dy]) => {
         const [rx, ry] = rotateCell(dx, dy, rot);
-        const gx = (ghostAnchor.x + rx + GRID_SIZE) % GRID_SIZE;
-        const gy = (ghostAnchor.y + ry + GRID_SIZE) % GRID_SIZE;
-        if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE) {
+        const gx = (ghostAnchor.x + rx + gridSize) % gridSize;
+        const gy = (ghostAnchor.y + ry + gridSize) % gridSize;
+        if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
           const drawX = gx * cellSize + viewOffset.x + 1;
           const drawY = gy * cellSize + viewOffset.y + 1;
           ctx.fillRect(drawX, drawY, cellSize - 2, cellSize - 2);
@@ -212,7 +213,7 @@ export function GameGrid({
         }
       });
     }
-  }, [grid, cellSize, viewOffset, selectionRect, patternToPlace, ghostAnchor, placementRotation, setViewOffset, containerRef, canvasRef, panBoundsRef]);
+  }, [grid, gridSize, cellSize, viewOffset, selectionRect, patternToPlace, ghostAnchor, placementRotation, setViewOffset, containerRef, canvasRef, panBoundsRef]);
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -224,7 +225,7 @@ export function GameGrid({
     const gridX = Math.floor((x - viewOffset.x) / cellSize);
     const gridY = Math.floor((y - viewOffset.y) / cellSize);
 
-    if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) return;
+    if (gridX < 0 || gridX >= gridSize || gridY < 0 || gridY >= gridSize) return;
 
     if (patternToPlace && e.button === 0) {
       e.preventDefault();
@@ -287,7 +288,7 @@ export function GameGrid({
     const y = e.clientY - rect.top;
     const gridX = Math.floor((x - viewOffset.x) / cellSize);
     const gridY = Math.floor((y - viewOffset.y) / cellSize);
-    if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) {
+    if (gridX < 0 || gridX >= gridSize || gridY < 0 || gridY >= gridSize) {
       if (patternToPlace) setGhostAnchor(null);
       return;
     }
@@ -324,14 +325,21 @@ export function GameGrid({
     if (patternToPlace) setGhostAnchor(null);
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    if (patternToPlace) {
-      onRotatePlacement(e.deltaY > 0 ? 1 : -1);
-    } else {
-      onWheel(e);
-    }
-  };
+  // Listener wheel en non-passif pour pouvoir appeler preventDefault (zoom / rotation)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      if (patternToPlace) {
+        onRotatePlacement(e.deltaY > 0 ? 1 : -1);
+      } else {
+        onWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
+      }
+    };
+    canvas.addEventListener('wheel', handler, { passive: false });
+    return () => canvas.removeEventListener('wheel', handler);
+  }, [patternToPlace, onRotatePlacement, onWheel, canvasRef]);
 
   return (
     <div className="flex-1 overflow-hidden relative" ref={containerRef}>
@@ -342,7 +350,6 @@ export function GameGrid({
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
         onMouseLeave={handleCanvasMouseLeave}
-        onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
         style={{
           cursor: patternToPlace

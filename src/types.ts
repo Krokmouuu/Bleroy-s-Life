@@ -1,4 +1,8 @@
-export const GRID_SIZE = 1000;
+/** Taille par défaut de la grille (carrée). */
+export const DEFAULT_GRID_SIZE = 500;
+export const MIN_GRID_SIZE = 100;
+export const MAX_GRID_SIZE = 2000;
+
 export const MIN_CELL_SIZE = 4; // 50% zoom minimum
 export const MAX_CELL_SIZE = 40;
 

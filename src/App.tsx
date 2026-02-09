@@ -1,21 +1,23 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AnimatePresence } from 'motion/react';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { AnimatePresence } from "motion/react";
 import {
-  GRID_SIZE,
+  DEFAULT_GRID_SIZE,
+  MIN_GRID_SIZE,
+  MAX_GRID_SIZE,
   MIN_CELL_SIZE,
   MAX_CELL_SIZE,
   type Pattern,
   type Folder,
   type SelectionRect,
-} from './types';
-import { BackgroundOverlay } from './components/BackgroundOverlay';
-import { SidebarToggle } from './components/SidebarToggle';
-import { Sidebar } from './components/Sidebar';
-import { Controls } from './components/Controls';
-import { GameGrid } from './components/GameGrid';
-import { SaveDialog } from './components/SaveDialog';
-import { NewFolderDialog } from './components/NewFolderDialog';
-import { IntroOverlay } from './components/IntroOverlay';
+} from "./types";
+import { BackgroundOverlay } from "./components/BackgroundOverlay";
+import { SidebarToggle } from "./components/SidebarToggle";
+import { Sidebar } from "./components/Sidebar";
+import { Controls } from "./components/Controls";
+import { GameGrid } from "./components/GameGrid";
+import { SaveDialog } from "./components/SaveDialog";
+import { NewFolderDialog } from "./components/NewFolderDialog";
+import { IntroOverlay } from "./components/IntroOverlay";
 
 function mod(a: number, n: number): number {
   return ((a % n) + n) % n;
@@ -23,8 +25,11 @@ function mod(a: number, n: number): number {
 
 export default function App() {
   const [showIntro, setShowIntro] = useState(true);
+  const [gridSize, setGridSize] = useState(DEFAULT_GRID_SIZE);
   const [grid, setGrid] = useState<boolean[][]>(() =>
-    Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false))
+    Array(DEFAULT_GRID_SIZE)
+      .fill(null)
+      .map(() => Array(DEFAULT_GRID_SIZE).fill(false)),
   );
   const [isRunning, setIsRunning] = useState(false);
   const [isEditMode, setIsEditMode] = useState(true);
@@ -34,18 +39,20 @@ export default function App() {
   const [savedPatterns, setSavedPatterns] = useState<Pattern[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [newPatternName, setNewPatternName] = useState('');
-  const [selectedFolder, setSelectedFolder] = useState<string>('');
+  const [newPatternName, setNewPatternName] = useState("");
+  const [selectedFolder, setSelectedFolder] = useState<string>("");
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderIcon, setNewFolderIcon] = useState('folder');
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderIcon, setNewFolderIcon] = useState("folder");
   const [cellSize, setCellSize] = useState(8);
   const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragMode, setDragMode] = useState<'draw' | 'erase'>('draw');
-  const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
+  const [dragMode, setDragMode] = useState<"draw" | "erase">("draw");
+  const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(
+    null,
+  );
   const [isSelectingRect, setIsSelectingRect] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [patternToPlace, setPatternToPlace] = useState<Pattern | null>(null);
@@ -67,8 +74,9 @@ export default function App() {
     const onPointerLockChange = () => {
       if (!document.pointerLockElement) setIsPanning(false);
     };
-    document.addEventListener('pointerlockchange', onPointerLockChange);
-    return () => document.removeEventListener('pointerlockchange', onPointerLockChange);
+    document.addEventListener("pointerlockchange", onPointerLockChange);
+    return () =>
+      document.removeEventListener("pointerlockchange", onPointerLockChange);
   }, []);
 
   useEffect(() => {
@@ -77,12 +85,12 @@ export default function App() {
     const w = container.clientWidth;
     const h = container.clientHeight;
     if (w <= 0 || h <= 0) return;
-    const gridPx = GRID_SIZE * cellSize;
+    const gridPx = gridSize * cellSize;
     setViewOffset((prev) => ({
       x: Math.max(-gridPx, Math.min(w, prev.x)),
       y: Math.max(-gridPx, Math.min(h, prev.y)),
     }));
-  }, [cellSize]);
+  }, [cellSize, gridSize]);
 
   useEffect(() => {
     if (showIntro || initialViewCenteredRef.current) return;
@@ -94,7 +102,7 @@ export default function App() {
       const h = container.clientHeight;
       if (w <= 0 || h <= 0) return;
       initialViewCenteredRef.current = true;
-      const gridPx = GRID_SIZE * cellSize;
+      const gridPx = gridSize * cellSize;
       setViewOffset({
         x: w / 2 - gridPx / 2,
         y: h / 2 - gridPx / 2,
@@ -104,35 +112,46 @@ export default function App() {
     const ro = new ResizeObserver(tryCenter);
     ro.observe(container);
     return () => ro.disconnect();
-  }, [showIntro, cellSize]);
+  }, [showIntro, cellSize, gridSize]);
 
   // Charger grille, presets et dossiers au montage
   useEffect(() => {
-    const saved = localStorage.getItem('conway-patterns');
-    const savedFolders = localStorage.getItem('conway-folders');
-    const savedState = localStorage.getItem('conway-state');
+    const saved = localStorage.getItem("conway-patterns");
+    const savedFolders = localStorage.getItem("conway-folders");
+    const savedState = localStorage.getItem("conway-state");
     if (saved) setSavedPatterns(JSON.parse(saved));
     if (savedFolders) setFolders(JSON.parse(savedFolders));
     if (savedState) {
       try {
-        const { cells, generation: savedGen } = JSON.parse(savedState) as {
+        const parsed = JSON.parse(savedState) as {
           cells: [number, number][];
           generation?: number;
+          gridSize?: number;
         };
+        const { cells, generation: savedGen, gridSize: savedGridSize } = parsed;
+        const size =
+          typeof savedGridSize === "number" &&
+          savedGridSize >= MIN_GRID_SIZE &&
+          savedGridSize <= MAX_GRID_SIZE
+            ? savedGridSize
+            : DEFAULT_GRID_SIZE;
+        setGridSize(size);
         if (Array.isArray(cells) && cells.length > 0) {
           setGrid(() => {
-            const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false));
+            const newGrid = Array(size)
+              .fill(null)
+              .map(() => Array(size).fill(false));
             cells.forEach(([x, y]) => {
-              if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+              if (x >= 0 && x < size && y >= 0 && y < size) {
                 newGrid[x][y] = true;
               }
             });
             return newGrid;
           });
-          if (typeof savedGen === 'number' && savedGen >= 0) setGeneration(savedGen);
+          if (typeof savedGen === "number" && savedGen >= 0)
+            setGeneration(savedGen);
         }
-      } catch {
-      }
+      } catch {}
     }
   }, []);
 
@@ -145,18 +164,23 @@ export default function App() {
         });
       });
       try {
-        localStorage.setItem('conway-state', JSON.stringify({ cells, generation }));
+        localStorage.setItem(
+          "conway-state",
+          JSON.stringify({ cells, generation, gridSize }),
+        );
       } catch {
         // quota dépassé ou indisponible
       }
     }, 1500);
     return () => clearTimeout(timeoutId);
-  }, [grid, generation]);
+  }, [grid, generation, gridSize]);
 
   const gridRef = useRef(grid);
   const generationRef = useRef(generation);
+  const gridSizeRef = useRef(gridSize);
   gridRef.current = grid;
   generationRef.current = generation;
+  gridSizeRef.current = gridSize;
 
   useEffect(() => {
     const onBeforeUnload = () => {
@@ -168,26 +192,37 @@ export default function App() {
         });
       });
       try {
-        localStorage.setItem('conway-state', JSON.stringify({ cells, generation: generationRef.current }));
-      } catch {
-      }
+        localStorage.setItem(
+          "conway-state",
+          JSON.stringify({
+            cells,
+            generation: generationRef.current,
+            gridSize: gridSizeRef.current,
+          }),
+        );
+      } catch {}
     };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
-  const countNeighbors = useCallback((g: boolean[][], x: number, y: number) => {
-    let count = 0;
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        if (i === 0 && j === 0) continue;
-        const nx = mod(x + i, GRID_SIZE);
-        const ny = mod(y + j, GRID_SIZE);
-        if (g[nx][ny]) count++;
+  const countNeighbors = useCallback(
+    (g: boolean[][], x: number, y: number) => {
+      const N = g.length;
+      const M = g[0]?.length ?? 0;
+      let count = 0;
+      for (let i = -1; i <= 1; i++) {
+        for (let j = -1; j <= 1; j++) {
+          if (i === 0 && j === 0) continue;
+          const nx = mod(x + i, N);
+          const ny = mod(y + j, M);
+          if (g[nx][ny]) count++;
+        }
       }
-    }
-    return count;
-  }, []);
+      return count;
+    },
+    [],
+  );
 
   // Règles B3/S23 : naissance si 3 voisins, survie si 2 ou 3.
   const runSimulation = useCallback(() => {
@@ -199,7 +234,7 @@ export default function App() {
           if (cell && (neighbors === 2 || neighbors === 3)) return true;
           if (!cell && neighbors === 3) return true;
           return false;
-        })
+        }),
       );
       return newGrid;
     });
@@ -220,49 +255,61 @@ export default function App() {
         return newGrid;
       });
     },
-    [isEditMode, isSelectionMode]
+    [isEditMode, isSelectionMode],
   );
 
   const clearGrid = useCallback(() => {
-    setGrid(Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false)));
+    setGrid(
+      Array(gridSize)
+        .fill(null)
+        .map(() => Array(gridSize).fill(false)),
+    );
     setGeneration(0);
-  }, []);
+  }, [gridSize]);
 
   const randomize = useCallback(() => {
     setGrid(
-      Array(GRID_SIZE)
+      Array(gridSize)
         .fill(null)
         .map(() =>
-          Array(GRID_SIZE)
+          Array(gridSize)
             .fill(null)
-            .map(() => Math.random() > 0.85)
-        )
+            .map(() => Math.random() > 0.85),
+        ),
     );
     setGeneration(0);
-  }, []);
+  }, [gridSize]);
 
-  const loadPattern = useCallback((pattern: Pattern) => {
-    const offsetX = Math.floor(GRID_SIZE / 2) - 5;
-    const offsetY = Math.floor(GRID_SIZE / 2) - 5;
-    setGrid(() => {
-      const newGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(false));
-      pattern.cells.forEach(([x, y]) => {
-        const newX = mod(offsetX + x, GRID_SIZE);
-        const newY = mod(offsetY + y, GRID_SIZE);
-        newGrid[newX][newY] = true;
+  const loadPattern = useCallback(
+    (pattern: Pattern) => {
+      const offsetX = Math.floor(gridSize / 2) - 5;
+      const offsetY = Math.floor(gridSize / 2) - 5;
+      setGrid(() => {
+        const newGrid = Array(gridSize)
+          .fill(null)
+          .map(() => Array(gridSize).fill(false));
+        pattern.cells.forEach(([x, y]) => {
+          const newX = mod(offsetX + x, gridSize);
+          const newY = mod(offsetY + y, gridSize);
+          newGrid[newX][newY] = true;
+        });
+        return newGrid;
       });
-      return newGrid;
-    });
-    setGeneration(0);
-  }, []);
+      setGeneration(0);
+    },
+    [gridSize],
+  );
 
-  const rotateCell = useCallback((dx: number, dy: number, rot: number): [number, number] => {
-    const r = ((rot % 4) + 4) % 4;
-    if (r === 0) return [dx, dy];
-    if (r === 1) return [dy, -dx];
-    if (r === 2) return [-dx, -dy];
-    return [-dy, dx];
-  }, []);
+  const rotateCell = useCallback(
+    (dx: number, dy: number, rot: number): [number, number] => {
+      const r = ((rot % 4) + 4) % 4;
+      if (r === 0) return [dx, dy];
+      if (r === 1) return [dy, -dx];
+      if (r === 2) return [-dx, -dy];
+      return [-dy, dx];
+    },
+    [],
+  );
 
   const placePatternAt = useCallback(
     (anchorX: number, anchorY: number) => {
@@ -270,10 +317,14 @@ export default function App() {
       const rot = ((placementRotation % 4) + 4) % 4;
       setGrid((g) => {
         const newGrid = g.map((row) => [...row]);
-        const rotatedCells = patternToPlace.cells.map(([dx, dy]) => rotateCell(dx, dy, rot));
+        const N = g.length;
+        const M = g[0]?.length ?? 0;
+        const rotatedCells = patternToPlace.cells.map(([dx, dy]) =>
+          rotateCell(dx, dy, rot),
+        );
         rotatedCells.forEach(([rx, ry]) => {
-          const x = mod(anchorX + rx, GRID_SIZE);
-          const y = mod(anchorY + ry, GRID_SIZE);
+          const x = mod(anchorX + rx, N);
+          const y = mod(anchorY + ry, M);
           newGrid[x][y] = true;
         });
         return newGrid;
@@ -281,39 +332,62 @@ export default function App() {
       setPatternToPlace(null);
       setPlacementRotation(0);
     },
-    [patternToPlace, placementRotation, rotateCell]
+    [patternToPlace, placementRotation, rotateCell],
   );
 
   const rotatePlacement = useCallback((delta: number) => {
-    setPlacementRotation((r) => ((r + delta) + 4) % 4);
+    setPlacementRotation((r) => (r + delta + 4) % 4);
   }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         setPatternToPlace(null);
         setPlacementRotation(0);
         return;
       }
       if (!patternToPlace) return;
-      if (e.key === 'r' || e.key === 'R') {
+      if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         rotatePlacement(1);
-      } else if (e.key === 'ArrowLeft') {
+      } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         rotatePlacement(-1);
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === "ArrowRight") {
         e.preventDefault();
         rotatePlacement(1);
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [patternToPlace, rotatePlacement]);
 
   useEffect(() => {
     if (patternToPlace) setPlacementRotation(0);
   }, [patternToPlace]);
+
+  const handleGridSizeChange = useCallback((newSize: number) => {
+    const size = Math.max(
+      MIN_GRID_SIZE,
+      Math.min(MAX_GRID_SIZE, Math.round(newSize)),
+    );
+    setGrid((prev) => {
+      const prevW = prev.length;
+      const prevH = prev[0]?.length ?? 0;
+      if (prevW === size && prevH === size) return prev;
+      const newGrid = Array(size)
+        .fill(null)
+        .map(() => Array(size).fill(false));
+      for (let i = 0; i < Math.min(prevW, size); i++) {
+        for (let j = 0; j < Math.min(prevH, size); j++) {
+          newGrid[i][j] = prev[i][j];
+        }
+      }
+      return newGrid;
+    });
+    setGridSize(size);
+    setSelectionRect(null);
+  }, []);
 
   const saveCurrentPattern = useCallback(() => {
     if (!newPatternName.trim()) return;
@@ -349,24 +423,24 @@ export default function App() {
     };
     const updated = [...savedPatterns, newPattern];
     setSavedPatterns(updated);
-    localStorage.setItem('conway-patterns', JSON.stringify(updated));
-    setNewPatternName('');
+    localStorage.setItem("conway-patterns", JSON.stringify(updated));
+    setNewPatternName("");
     setShowSaveDialog(false);
-    setSelectedFolder('');
+    setSelectedFolder("");
     setSelectionRect(null);
   }, [newPatternName, selectedFolder, selectionRect, grid, savedPatterns]);
 
   const deletePattern = useCallback((id: string) => {
     setSavedPatterns((prev) => {
       const updated = prev.filter((p) => p.id !== id);
-      localStorage.setItem('conway-patterns', JSON.stringify(updated));
+      localStorage.setItem("conway-patterns", JSON.stringify(updated));
       return updated;
     });
   }, []);
 
   const createFolder = useCallback(() => {
-    setNewFolderName('');
-    setNewFolderIcon('folder');
+    setNewFolderName("");
+    setNewFolderIcon("folder");
     setShowNewFolderDialog(true);
   }, []);
 
@@ -381,20 +455,20 @@ export default function App() {
     };
     setFolders((prev) => {
       const updated = [...prev, newFolder];
-      localStorage.setItem('conway-folders', JSON.stringify(updated));
+      localStorage.setItem("conway-folders", JSON.stringify(updated));
       return updated;
     });
     setShowNewFolderDialog(false);
-    setNewFolderName('');
-    setNewFolderIcon('folder');
+    setNewFolderName("");
+    setNewFolderIcon("folder");
   }, [newFolderName, newFolderIcon]);
 
   const toggleFolder = useCallback((id: string) => {
     setFolders((prev) => {
       const updated = prev.map((f) =>
-        f.id === id ? { ...f, expanded: !f.expanded } : f
+        f.id === id ? { ...f, expanded: !f.expanded } : f,
       );
-      localStorage.setItem('conway-folders', JSON.stringify(updated));
+      localStorage.setItem("conway-folders", JSON.stringify(updated));
       return updated;
     });
   }, []);
@@ -402,14 +476,14 @@ export default function App() {
   const deleteFolder = useCallback((id: string) => {
     setFolders((prev) => {
       const updated = prev.filter((f) => f.id !== id);
-      localStorage.setItem('conway-folders', JSON.stringify(updated));
+      localStorage.setItem("conway-folders", JSON.stringify(updated));
       return updated;
     });
     setSavedPatterns((prev) => {
       const updated = prev.map((p) =>
-        p.folderId === id ? { ...p, folderId: undefined } : p
+        p.folderId === id ? { ...p, folderId: undefined } : p,
       );
-      localStorage.setItem('conway-patterns', JSON.stringify(updated));
+      localStorage.setItem("conway-patterns", JSON.stringify(updated));
       return updated;
     });
   }, []);
@@ -459,7 +533,7 @@ export default function App() {
       if (e.deltaY < 0) zoomIn();
       else zoomOut();
     },
-    [zoomIn, zoomOut]
+    [zoomIn, zoomOut],
   );
 
   return (
@@ -467,135 +541,141 @@ export default function App() {
       {showIntro ? (
         <IntroOverlay onComplete={() => setShowIntro(false)} />
       ) : (
-      <div
-        className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden"
-        onMouseUp={() => setIsDragging(false)}
-      >
-        <BackgroundOverlay />
-      <SidebarToggle sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+        <div
+          className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white overflow-hidden"
+          onMouseUp={() => setIsDragging(false)}
+        >
+          <BackgroundOverlay />
+          <SidebarToggle
+            sidebarOpen={sidebarOpen}
+            onToggle={() => setSidebarOpen(!sidebarOpen)}
+          />
 
-      <Sidebar
-        sidebarOpen={sidebarOpen}
-        savedPatterns={savedPatterns}
-        folders={folders}
-        patternToPlace={patternToPlace}
-        onLoadPattern={loadPattern}
-        onSelectPresetForPlacement={setPatternToPlace}
-        onDeletePattern={deletePattern}
-        onCreateFolder={createFolder}
-        onToggleFolder={toggleFolder}
-        onDeleteFolder={deleteFolder}
-      />
-
-      <div className="flex-1 flex flex-col relative min-w-0 transition-[width] duration-300 ease-in-out">
-        <Controls
-          sidebarOpen={sidebarOpen}
-          isRunning={isRunning}
-          isEditMode={isEditMode}
-          isSelectionMode={isSelectionMode}
-          generation={generation}
-          speed={speed}
-          cellSize={cellSize}
-          onToggleRun={() => {
-            setIsRunning(!isRunning);
-            if (isEditMode) setIsEditMode(false);
-            if (isSelectionMode) setIsSelectionMode(false);
-          }}
-          onToggleEdit={() => {
-            setIsEditMode(!isEditMode);
-            if (!isEditMode) {
-              setIsRunning(false);
-              setIsSelectionMode(false);
-            }
-          }}
-          onToggleSelection={() => {
-            if (!isRunning) {
-              setIsSelectionMode(!isSelectionMode);
-              if (!isSelectionMode) setSelectionRect(null);
-            }
-          }}
-          onClearGrid={clearGrid}
-          onRandomize={randomize}
-          onSave={() => setShowSaveDialog(true)}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onSpeedChange={setSpeed}
-        />
-
-        <GameGrid
-          grid={grid}
-          setGrid={setGrid}
-          cellSize={cellSize}
-          viewOffset={viewOffset}
-          setViewOffset={setViewOffset}
-          selectionRect={selectionRect}
-          setSelectionRect={setSelectionRect}
-          isEditMode={isEditMode}
-          isSelectionMode={isSelectionMode}
-          isPanning={isPanning}
-          setIsPanning={setIsPanning}
-          panStart={panStart}
-          setPanStart={setPanStart}
-          isDragging={isDragging}
-          setIsDragging={setIsDragging}
-          dragMode={dragMode}
-          setDragMode={setDragMode}
-          isSelectingRect={isSelectingRect}
-          setIsSelectingRect={setIsSelectingRect}
-          patternToPlace={patternToPlace}
-          placementRotation={placementRotation}
-          onPlacePattern={placePatternAt}
-          onRotatePlacement={rotatePlacement}
-          containerRef={containerRef}
-          canvasRef={canvasRef}
-          panBoundsRef={panBoundsRef}
-          onToggleCell={toggleCell}
-          onWheel={handleWheel}
-        />
-      </div>
-
-      <AnimatePresence>
-        {showSaveDialog && (
-          <SaveDialog
-            open={showSaveDialog}
-            newPatternName={newPatternName}
-            selectedFolder={selectedFolder}
+          <Sidebar
+            sidebarOpen={sidebarOpen}
+            gridSize={gridSize}
+            onGridSizeChange={handleGridSizeChange}
+            savedPatterns={savedPatterns}
             folders={folders}
-            selectionRect={selectionRect}
-            onClose={() => {
-              setShowSaveDialog(false);
-              setNewPatternName('');
-              setSelectedFolder('');
-            }}
-            onNameChange={setNewPatternName}
-            onFolderChange={setSelectedFolder}
-            onSave={saveCurrentPattern}
+            patternToPlace={patternToPlace}
+            onLoadPattern={loadPattern}
+            onSelectPresetForPlacement={setPatternToPlace}
+            onDeletePattern={deletePattern}
+            onCreateFolder={createFolder}
+            onToggleFolder={toggleFolder}
+            onDeleteFolder={deleteFolder}
           />
-        )}
-        {showNewFolderDialog && (
-          <NewFolderDialog
-            open={showNewFolderDialog}
-            folderName={newFolderName}
-            selectedIconId={newFolderIcon}
-            onClose={() => {
-              setShowNewFolderDialog(false);
-              setNewFolderName('');
-              setNewFolderIcon('folder');
-            }}
-            onNameChange={setNewFolderName}
-            onIconChange={setNewFolderIcon}
-            onCreate={handleCreateFolderFromDialog}
-          />
-        )}
-      </AnimatePresence>
 
-      <style>{`
+          <div className="flex-1 flex flex-col relative min-w-0 transition-[width] duration-300 ease-in-out">
+            <Controls
+              sidebarOpen={sidebarOpen}
+              isRunning={isRunning}
+              isEditMode={isEditMode}
+              isSelectionMode={isSelectionMode}
+              generation={generation}
+              speed={speed}
+              cellSize={cellSize}
+              onToggleRun={() => {
+                setIsRunning(!isRunning);
+                if (isEditMode) setIsEditMode(false);
+                if (isSelectionMode) setIsSelectionMode(false);
+              }}
+              onToggleEdit={() => {
+                setIsEditMode(!isEditMode);
+                if (!isEditMode) {
+                  setIsRunning(false);
+                  setIsSelectionMode(false);
+                }
+              }}
+              onToggleSelection={() => {
+                if (!isRunning) {
+                  setIsSelectionMode(!isSelectionMode);
+                  if (!isSelectionMode) setSelectionRect(null);
+                }
+              }}
+              onClearGrid={clearGrid}
+              onRandomize={randomize}
+              onSave={() => setShowSaveDialog(true)}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onSpeedChange={setSpeed}
+            />
+
+            <GameGrid
+              grid={grid}
+              setGrid={setGrid}
+              gridSize={gridSize}
+              cellSize={cellSize}
+              viewOffset={viewOffset}
+              setViewOffset={setViewOffset}
+              selectionRect={selectionRect}
+              setSelectionRect={setSelectionRect}
+              isEditMode={isEditMode}
+              isSelectionMode={isSelectionMode}
+              isPanning={isPanning}
+              setIsPanning={setIsPanning}
+              panStart={panStart}
+              setPanStart={setPanStart}
+              isDragging={isDragging}
+              setIsDragging={setIsDragging}
+              dragMode={dragMode}
+              setDragMode={setDragMode}
+              isSelectingRect={isSelectingRect}
+              setIsSelectingRect={setIsSelectingRect}
+              patternToPlace={patternToPlace}
+              placementRotation={placementRotation}
+              onPlacePattern={placePatternAt}
+              onRotatePlacement={rotatePlacement}
+              containerRef={containerRef}
+              canvasRef={canvasRef}
+              panBoundsRef={panBoundsRef}
+              onToggleCell={toggleCell}
+              onWheel={handleWheel}
+            />
+          </div>
+
+          <AnimatePresence>
+            {showSaveDialog && (
+              <SaveDialog
+                open={showSaveDialog}
+                newPatternName={newPatternName}
+                selectedFolder={selectedFolder}
+                folders={folders}
+                selectionRect={selectionRect}
+                onClose={() => {
+                  setShowSaveDialog(false);
+                  setNewPatternName("");
+                  setSelectedFolder("");
+                }}
+                onNameChange={setNewPatternName}
+                onFolderChange={setSelectedFolder}
+                onSave={saveCurrentPattern}
+              />
+            )}
+            {showNewFolderDialog && (
+              <NewFolderDialog
+                open={showNewFolderDialog}
+                folderName={newFolderName}
+                selectedIconId={newFolderIcon}
+                onClose={() => {
+                  setShowNewFolderDialog(false);
+                  setNewFolderName("");
+                  setNewFolderIcon("folder");
+                }}
+                onNameChange={setNewFolderName}
+                onIconChange={setNewFolderIcon}
+                onCreate={handleCreateFolderFromDialog}
+              />
+            )}
+          </AnimatePresence>
+
+          <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.3); }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.3); border-radius: 3px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(6, 182, 212, 0.5); }
       `}</style>
-      </div>
+        </div>
       )}
     </>
   );
